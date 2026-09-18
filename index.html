@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#1e2621">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<title>Hole Tracer</title>
+<style>
+:root{
+  --bg:#1e2621; --panel:#26302a; --raised:#323d36; --line:#44514a;
+  --text:#e8ece4; --dim:#9aa69e; --flag:#f4c542; --aim:#7fd4e8; --pen:#e0584a; --ball:#ffffff;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font-family:system-ui,"Noto Sans JP",sans-serif;font-size:16px;overscroll-behavior:none;user-select:none;-webkit-user-select:none}
+button{font:inherit;color:inherit;background:var(--raised);border:1px solid var(--line);border-radius:10px;
+  padding:12px 14px;min-height:48px;touch-action:manipulation}
+button:active{background:var(--line)}
+button:disabled{opacity:.35}
+button.primary{background:var(--flag);color:#1e2621;border-color:var(--flag);font-weight:700}
+button.danger{color:var(--pen)}
+button:focus-visible{outline:2px solid var(--aim);outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+.screen{display:none;height:100dvh;flex-direction:column}
+.screen.on{display:flex}
+header{display:flex;align-items:center;gap:10px;padding:10px 12px;padding-top:max(10px,env(safe-area-inset-top));border-bottom:1px solid var(--line)}
+header h1{font-size:18px;margin:0;flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+header button{min-height:40px;padding:6px 12px}
+.scroll{flex:1;overflow:auto;padding:12px}
+.row{display:flex;align-items:center;gap:12px;padding:10px;border-bottom:1px solid var(--line)}
+.row .grow{flex:1;min-width:0}
+.row small{color:var(--dim)}
+.row img{width:56px;height:56px;object-fit:cover;border-radius:6px;background:#000}
+.actions{display:flex;flex-wrap:wrap;gap:8px;padding:12px;padding-bottom:max(12px,env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+.actions button{flex:1}
+.empty{color:var(--dim);padding:24px 8px;line-height:1.7}
+.mapwrap{position:relative;flex:1;min-height:0;overflow:hidden;background:#555c57}
+.mapwrap canvas{position:absolute;inset:0;touch-action:none}
+.hud{position:absolute;left:8px;right:8px;bottom:8px;display:flex;justify-content:space-between;pointer-events:none;gap:8px}
+.hud span{background:rgba(30,38,33,.85);padding:4px 10px;border-radius:8px;font-size:14px}
+.panel{background:var(--panel);border-top:1px solid var(--line);padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
+.stick{position:relative;width:128px;height:128px;border-radius:50%;background:var(--raised);border:1px solid var(--line);touch-action:none;flex:none}
+.stick::before{content:"";position:absolute;left:50%;top:10px;bottom:10px;border-left:1px dashed var(--line)}
+.stick::after{content:"";position:absolute;top:50%;left:10px;right:10px;border-top:1px dashed var(--line)}
+.stick .knob{position:absolute;width:52px;height:52px;left:38px;top:38px;border-radius:50%;background:var(--text);z-index:1;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+.stick.h::before{display:none}
+.inst{margin:0 0 10px;line-height:1.5}
+.inst b{color:var(--flag)}
+.edgrid{display:flex;gap:12px;align-items:center}
+.edgrid .col{flex:1;display:flex;flex-direction:column;gap:8px}
+input[type=text],input[type=number]{font:inherit;font-size:20px;width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
+/* プレー画面 */
+.inputs{display:flex;gap:8px;margin-bottom:8px}
+.field{flex:1;background:var(--bg);border:2px solid var(--line);border-radius:10px;padding:4px 10px;min-height:52px}
+.field.act{border-color:var(--flag)}
+.field small{display:block;color:var(--dim);font-size:12px}
+.field .v{font-size:22px;font-weight:700}
+.playgrid{display:flex;gap:8px}
+.keys{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.keys button{padding:0;min-height:46px;font-size:20px}
+.side{display:flex;flex-direction:column;gap:6px;align-items:stretch;width:128px}
+.lr{display:flex;gap:6px}
+.lr button{flex:1;padding:0;font-size:18px;font-weight:700}
+.lr button.sel{background:var(--aim);color:#1e2621;border-color:var(--aim)}
+.tools{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
+.tools button{padding:0 2px;font-size:13px;min-height:44px;white-space:nowrap}
+.aimtxt{text-align:center;font-size:13px;color:var(--dim)}
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:18px;width:min(92vw,380px)}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+dialog h2{margin:0 0 12px;font-size:18px}
+dialog .btns{display:flex;gap:8px;margin-top:14px}
+dialog .btns button{flex:1}
+.putts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.putts button{font-size:22px;font-weight:700}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{padding:10px 6px;border-bottom:1px solid var(--line);text-align:center}
+th{color:var(--dim);font-weight:400;font-size:13px}
+tr.tap td{cursor:pointer}
+td.over{color:var(--pen)} td.under{color:var(--aim)}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<!-- ホーム：コース一覧 -->
+<section id="s-home" class="screen on">
+  <header><h1>Hole Tracer</h1><button id="btn-history">記録</button></header>
+  <div class="scroll" id="course-list"></div>
+  <div class="actions"><button class="primary" id="btn-add-course">コースを追加</button></div>
+</section>
+
+<!-- コース：ホール一覧 -->
+<section id="s-course" class="screen">
+  <header><button data-back="home">戻る</button><h1 id="course-title"></h1></header>
+  <div class="scroll" id="hole-list"></div>
+  <div class="actions">
+    <button id="btn-add-hole">ホールを追加</button>
+    <button class="primary" id="btn-start-round">ラウンド開始</button>
+    <button id="btn-resume" class="hidden" style="flex-basis:100%">中断したラウンドを再開</button>
+    <button class="danger" id="btn-del-course" style="flex-basis:100%;flex-grow:0">コースを削除</button>
+  </div>
+</section>
+
+<!-- ホール登録 -->
+<section id="s-edit" class="screen">
+  <header><button id="ed-cancel">やめる</button><h1 id="ed-title">ホールを登録</h1></header>
+  <div class="mapwrap"><canvas id="ed-canvas"></canvas></div>
+  <div class="panel">
+    <p class="inst" id="ed-inst"></p>
+    <div id="ed-pick" class="actions" style="border:0;padding:0">
+      <button class="primary" id="ed-pick-btn">画像を選ぶ</button>
+      <input type="file" id="ed-file" accept="image/*" class="hidden">
+    </div>
+    <div id="ed-point" class="edgrid hidden">
+      <div class="stick" id="ed-stick"><div class="knob"></div></div>
+      <div class="col"><button class="primary" id="ed-ok">決定</button><button id="ed-back">1つ戻る</button></div>
+    </div>
+    <div id="ed-dist" class="hidden">
+      <input type="number" inputmode="decimal" id="ed-yd" placeholder="ヤード">
+      <div class="actions" style="border:0;padding:10px 0 0"><button id="ed-back2">1つ戻る</button><button class="primary" id="ed-yd-ok">決定</button></div>
+    </div>
+    <div id="ed-par" class="hidden">
+      <div class="putts" id="ed-par-btns"></div>
+      <div class="actions" style="border:0;padding:10px 0 0"><button id="ed-back3">1つ戻る</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- プレー -->
+<section id="s-play" class="screen">
+  <header><button id="pl-quit">中断</button><h1 id="pl-title"></h1><span class="num" id="pl-strokes"></span></header>
+  <div class="mapwrap"><canvas id="pl-canvas"></canvas>
+    <div class="hud num"><span id="pl-remain"></span><span id="pl-prev"></span></div>
+  </div>
+  <div class="panel">
+    <div id="pl-shot">
+      <div class="inputs num">
+        <div class="field act" id="f-dist"><small>トータル飛距離</small><span class="v" id="v-dist">–</span></div>
+        <div class="field" id="f-lat"><small>左右のずれ</small><span class="v" id="v-lat">–</span></div>
+      </div>
+      <div class="playgrid">
+        <div class="keys" id="keys"></div>
+        <div class="side">
+          <div class="lr"><button id="k-L">L</button><button id="k-R">R</button></div>
+          <div class="stick h" id="pl-stick"><div class="knob"></div></div>
+          <div class="aimtxt num" id="pl-aim"></div>
+        </div>
+      </div>
+      <div class="tools">
+        <button id="t-undo">取り消し</button><button id="t-ob">OB</button><button id="t-pen">ペナルティ</button><button id="t-on">グリーンオン</button>
+      </div>
+      <button class="primary" id="t-ok" style="width:100%;margin-top:8px" disabled>ショットを確定</button>
+    </div>
+    <div id="pl-relief" class="hidden">
+      <p class="inst">ペナルティで1打罰です。スティックで<b>救済後の位置</b>を決めてください。</p>
+      <div class="edgrid">
+        <div class="stick" id="rl-stick"><div class="knob"></div></div>
+        <div class="col"><button class="primary" id="rl-ok">この位置に置く</button><button id="rl-cancel">ペナルティをやめる</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 記録一覧 -->
+<section id="s-history" class="screen">
+  <header><button data-back="home">戻る</button><h1>記録</h1></header>
+  <div class="scroll" id="round-list"></div>
+</section>
+
+<!-- スコアカード -->
+<section id="s-card" class="screen">
+  <header><button id="card-back">戻る</button><h1 id="card-title"></h1></header>
+  <div class="scroll"><table id="card-table"></table><p class="empty">ホールの行をタップすると、そのときのショットの軌跡を表示します。</p></div>
+  <div class="actions"><button class="danger" id="card-del">この記録を削除</button></div>
+</section>
+
+<!-- 軌跡表示 -->
+<section id="s-trace" class="screen">
+  <header><button data-back="card">戻る</button><h1 id="trace-title"></h1></header>
+  <div class="mapwrap"><canvas id="tr-canvas"></canvas></div>
+</section>
+
+<dialog id="dlg-text"><h2 id="dt-title"></h2><input type="text" id="dt-input"><div class="btns"><button value="cancel" id="dt-cancel">キャンセル</button><button class="primary" id="dt-ok">決定</button></div></dialog>
+<dialog id="dlg-putt"><h2>パット数を選んでください</h2><div class="putts" id="putt-btns"></div><div class="btns"><button id="putt-cancel">戻る</button></div></dialog>
+<dialog id="dlg-msg"><h2 id="dm-title"></h2><p id="dm-body" style="line-height:1.6;margin:0"></p><div class="btns" id="dm-btns"></div></dialog>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const dist = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
+
+/* ---------- 保存（IndexedDB） ---------- */
+const DB = {
+  open() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('holetracer', 1);
+      r.onupgradeneeded = () => {
+        const d = r.result;
+        d.createObjectStore('courses', { keyPath: 'id' });
+        d.createObjectStore('holes', { keyPath: 'id' }).createIndex('course', 'courseId');
+        d.createObjectStore('rounds', { keyPath: 'id' }).createIndex('course', 'courseId');
+      };
+      r.onsuccess = () => { this.db = r.result; res(); };
+      r.onerror = () => rej(r.error);
+    });
+  },
+  tx(store, mode, fn) {
+    return new Promise((res, rej) => {
+      const t = this.db.transaction(store, mode), req = fn(t.objectStore(store));
+      let out; if (req) req.onsuccess = () => { out = req.result; };
+      t.oncomplete = () => res(out); t.onerror = () => rej(t.error);
+    });
+  },
+  put(s, v) { return this.tx(s, 'readwrite', o => o.put(v)); },
+  get(s, k) { return this.tx(s, 'readonly', o => o.get(k)); },
+  del(s, k) { return this.tx(s, 'readwrite', o => o.delete(k)); },
+  all(s) { return this.tx(s, 'readonly', o => o.getAll()); },
+  byCourse(s, c) { return this.tx(s, 'readonly', o => o.index('course').getAll(c)); },
+};
+
+/* ---------- 画面切り替え・ダイアログ ---------- */
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === 's-' + id));
+  window.dispatchEvent(new Event('resize'));
+}
+document.querySelectorAll('[data-back]').forEach(b => b.onclick = () => {
+  const t = b.dataset.back; if (t === 'home') renderHome(); show(t);
+});
+function askText(title, def = '') {
+  return new Promise(res => {
+    const d = $('#dlg-text'); $('#dt-title').textContent = title; $('#dt-input').value = def;
+    $('#dt-ok').onclick = () => { d.close(); res($('#dt-input').value.trim()); };
+    $('#dt-cancel').onclick = () => { d.close(); res(null); };
+    d.showModal(); $('#dt-input').focus();
+  });
+}
+function msg(title, body, buttons) { // buttons: [[label, value, cls]]
+  return new Promise(res => {
+    const d = $('#dlg-msg'); $('#dm-title').textContent = title; $('#dm-body').textContent = body || '';
+    const box = $('#dm-btns'); box.innerHTML = '';
+    for (const [label, val, cls] of buttons) {
+      const b = document.createElement('button'); b.textContent = label; if (cls) b.className = cls;
+      b.onclick = () => { d.close(); res(val); }; box.appendChild(b);
+    }
+    d.showModal();
+  });
+}
+const confirmDel = (t, b) => msg(t, b, [['キャンセル', false], ['削除する', true, 'danger']]);
+
+/* ---------- 地図表示（パン・ピンチ・ダブルタップ） ---------- */
+class MapView {
+  constructor(canvas) {
+    this.c = canvas; this.ctx = canvas.getContext('2d'); this.img = null;
+    this.s = 1; this.ox = 0; this.oy = 0; this.overlay = null; this.ptrs = new Map(); this.lastTap = 0;
+    new ResizeObserver(() => this.resize()).observe(canvas.parentElement);
+    canvas.addEventListener('pointerdown', e => this.down(e));
+    canvas.addEventListener('pointermove', e => this.move(e));
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => canvas.addEventListener(t, e => this.ptrs.delete(e.pointerId)));
+  }
+  setImage(img) { this.img = img; this.resize(); this.fit(); }
+  resize() {
+    const r = this.c.parentElement.getBoundingClientRect(); if (!r.width) return;
+    const first = !this.w; this.w = r.width; this.h = r.height; this.dpr = devicePixelRatio || 1;
+    this.c.width = r.width * this.dpr; this.c.height = r.height * this.dpr;
+    if (first) this.fit(); else this.draw();
+  }
+  fit() {
+    if (!this.img || !this.w) return;
+    this.s = Math.min(this.w / this.img.width, this.h / this.img.height) * 0.94;
+    this.ox = (this.w - this.img.width * this.s) / 2; this.oy = (this.h - this.img.height * this.s) / 2; this.draw();
+  }
+  toScr(p) { return { x: p.x * this.s + this.ox, y: p.y * this.s + this.oy }; }
+  centerImg() { return { x: (this.w / 2 - this.ox) / this.s, y: (this.h / 2 - this.oy) / this.s }; }
+  ensureVisible(p, m = 30) {
+    const q = this.toScr(p);
+    if (q.x < m || q.x > this.w - m || q.y < m || q.y > this.h - m) { this.ox += this.w / 2 - q.x; this.oy += this.h / 2 - q.y; }
+    this.draw();
+  }
+  down(e) {
+    this.c.setPointerCapture(e.pointerId); this.ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+    if (this.ptrs.size === 1) {
+      const now = performance.now();
+      if (now - this.lastTap < 300 && this.tapPos && Math.hypot(e.offsetX - this.tapPos.x, e.offsetY - this.tapPos.y) < 30) { this.fit(); this.lastTap = 0; return; }
+      this.lastTap = now; this.tapPos = { x: e.offsetX, y: e.offsetY };
+    }
+  }
+  move(e) {
+    const prev = this.ptrs.get(e.pointerId); if (!prev) return;
+    const cur = { x: e.offsetX, y: e.offsetY };
+    if (this.ptrs.size === 1) { this.ox += cur.x - prev.x; this.oy += cur.y - prev.y; }
+    else if (this.ptrs.size === 2) {
+      const other = [...this.ptrs.entries()].find(([k]) => k !== e.pointerId)[1];
+      const d0 = Math.hypot(prev.x - other.x, prev.y - other.y), d1 = Math.hypot(cur.x - other.x, cur.y - other.y);
+      const m0 = { x: (prev.x + other.x) / 2, y: (prev.y + other.y) / 2 }, m1 = { x: (cur.x + other.x) / 2, y: (cur.y + other.y) / 2 };
+      const k = d0 > 0 ? d1 / d0 : 1, ns = clamp(this.s * k, 0.02, 40), kk = ns / this.s;
+      this.ox = m1.x - (m0.x - this.ox) * kk; this.oy = m1.y - (m0.y - this.oy) * kk; this.s = ns;
+    }
+    this.ptrs.set(e.pointerId, cur); this.draw();
+  }
+  draw() { if (!this.raf) this.raf = requestAnimationFrame(() => { this.raf = 0; this.paint(); }); }
+  paint() {
+    const x = this.ctx; x.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    x.fillStyle = '#555c57'; x.fillRect(0, 0, this.w, this.h); // 画像の外は灰色
+    if (this.img) { x.imageSmoothingEnabled = true; x.drawImage(this.img, this.ox, this.oy, this.img.width * this.s, this.img.height * this.s); }
+    if (this.overlay) this.overlay(x, this);
+  }
+  // 点の周りを拡大表示するルーペ
+  loupe(p) {
+    const x = this.ctx, R = 64, mag = Math.max(this.s * 4, 1.5), q = this.toScr(p);
+    const cx = q.x < this.w / 2 ? this.w - R - 10 : R + 10, cy = R + 10;
+    x.save(); x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.clip();
+    x.fillStyle = '#555c57'; x.fillRect(cx - R, cy - R, R * 2, R * 2);
+    x.drawImage(this.img, cx - p.x * mag, cy - p.y * mag, this.img.width * mag, this.img.height * mag);
+    x.strokeStyle = '#ff3b30'; x.lineWidth = 1.5; x.beginPath();
+    x.moveTo(cx - R, cy); x.lineTo(cx - 5, cy); x.moveTo(cx + 5, cy); x.lineTo(cx + R, cy);
+    x.moveTo(cx, cy - R); x.lineTo(cx, cy - 5); x.moveTo(cx, cy + 5); x.lineTo(cx, cy + R); x.stroke();
+    x.restore(); x.strokeStyle = '#e8ece4'; x.lineWidth = 2; x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.stroke();
+  }
+}
+
+/* ---------- スティック（傾けた量に応じて速度が変わる） ---------- */
+class Stick {
+  constructor(el, onMove, horizontalOnly = false) {
+    this.el = el; this.knob = el.querySelector('.knob'); this.onMove = onMove; this.h = horizontalOnly; this.n = null;
+    el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); this.set(e); this.t = performance.now(); this.loop(); });
+    el.addEventListener('pointermove', e => { if (this.n) this.set(e); });
+    const up = () => { this.n = null; this.knob.style.transform = ''; };
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  }
+  set(e) {
+    const r = this.el.getBoundingClientRect(), R = r.width / 2 - 26;
+    let dx = e.clientX - r.left - r.width / 2, dy = this.h ? 0 : e.clientY - r.top - r.height / 2;
+    const l = Math.hypot(dx, dy); if (l > R) { dx *= R / l; dy *= R / l; }
+    this.knob.style.transform = `translate(${dx}px,${dy}px)`; this.n = { x: dx / R, y: dy / R };
+  }
+  loop() {
+    if (!this.n) return;
+    const now = performance.now(), dt = Math.min((now - this.t) / 1000, 0.05); this.t = now;
+    const f = v => Math.sign(v) * Math.pow(Math.abs(v), 2.4); // 小さく傾けると非常にゆっくり
+    if (Math.abs(this.n.x) > 0.04 || Math.abs(this.n.y) > 0.04) this.onMove(f(this.n.x), f(this.n.y), dt);
+    requestAnimationFrame(() => this.loop());
+  }
+}
+const movePoint = (mv, p) => (nx, ny, dt) => { const sp = 220 / mv.s; p.x += nx * sp * dt; p.y += ny * sp * dt; mv.draw(); };
+
+/* ---------- 描画部品 ---------- */
+function drawFlag(x, q) {
+  x.strokeStyle = '#1e2621'; x.lineWidth = 4; x.beginPath(); x.moveTo(q.x, q.y); x.lineTo(q.x, q.y - 26); x.stroke();
+  x.strokeStyle = '#e8ece4'; x.lineWidth = 2; x.stroke();
+  x.fillStyle = '#f4c542'; x.beginPath(); x.moveTo(q.x, q.y - 26); x.lineTo(q.x + 15, q.y - 21); x.lineTo(q.x, q.y - 16); x.fill();
+  x.beginPath(); x.arc(q.x, q.y, 3.5, 0, Math.PI * 2); x.fill();
+}
+function drawTee(x, q) { x.fillStyle = '#e8ece4'; x.strokeStyle = '#1e2621'; x.lineWidth = 2; x.fillRect(q.x - 6, q.y - 6, 12, 12); x.strokeRect(q.x - 6, q.y - 6, 12, 12); }
+function drawBall(x, q, r = 6) { x.fillStyle = '#fff'; x.strokeStyle = '#1e2621'; x.lineWidth = 2; x.beginPath(); x.arc(q.x, q.y, r, 0, Math.PI * 2); x.fill(); x.stroke(); }
+function drawCross(x, q) { x.strokeStyle = '#e0584a'; x.lineWidth = 3; x.beginPath(); x.moveTo(q.x - 6, q.y - 6); x.lineTo(q.x + 6, q.y + 6); x.moveTo(q.x + 6, q.y - 6); x.lineTo(q.x - 6, q.y + 6); x.stroke(); }
+function label(x, q, t) { x.font = '600 13px system-ui'; const w = x.measureText(t).width; x.fillStyle = 'rgba(30,38,33,.85)'; x.fillRect(q.x + 10, q.y - 20, w + 10, 20); x.fillStyle = '#e8ece4'; x.fillText(t, q.x + 15, q.y - 5); }
+function line(x, a, b, color, w = 2, dash = []) { x.setLineDash(dash); x.strokeStyle = color; x.lineWidth = w; x.beginPath(); x.moveTo(a.x, a.y); x.lineTo(b.x, b.y); x.stroke(); x.setLineDash([]); }
+function drawShots(x, mv, shots) {
+  for (const s of shots) {
+    const a = mv.toScr(s.from), b = mv.toScr(s.to);
+    if (s.ob) { line(x, a, b, '#e0584a', 2, [6, 5]); drawCross(x, b); }
+    else if (s.pen) { line(x, a, b, '#e0584a', 2, [6, 5]); drawCross(x, b); if (s.relief) { const r = mv.toScr(s.relief); line(x, b, r, '#e0584a', 1.5, [2, 4]); } }
+    else { line(x, a, b, 'rgba(30,38,33,.7)', 4); line(x, a, b, '#fff', 2); x.fillStyle = '#fff'; x.beginPath(); x.arc(b.x, b.y, 3, 0, Math.PI * 2); x.fill(); }
+  }
+}
+
+/* ---------- 計算 ---------- */
+const ypp = h => h.scaleYd / dist(h.scaleA, h.scaleB); // 1ピクセルあたりのヤード
+const angleTo = (p, q) => Math.atan2(q.x - p.x, -(q.y - p.y)); // 真上=0、時計回りが正
+// 飛距離＝打った地点からの直線距離、左右ずれ＝狙い線からの横方向の距離（右が正）
+function landing(from, aim, D, L, k) {
+  const phi = Math.asin(clamp(L / D, -1, 1)), a = aim + phi, px = D / k;
+  return { x: from.x + px * Math.sin(a), y: from.y - px * Math.cos(a) };
+}
+const fmtYd = v => Math.round(v) + 'y';
+
+/* ---------- ホーム ---------- */
+let course = null;
+async function renderHome() {
+  const list = (await DB.all('courses')).sort((a, b) => a.created - b.created), box = $('#course-list');
+  box.innerHTML = list.length ? '' : '<p class="empty">まだコースがありません。「コースを追加」から始めてください。</p>';
+  for (const c of list) {
+    const n = (await DB.byCourse('holes', c.id)).length, r = document.createElement('div');
+    r.className = 'row'; r.innerHTML = `<div class="grow"><div></div><small>${n}ホール登録済み</small></div>`;
+    r.querySelector('.grow div').textContent = c.name; r.onclick = () => openCourse(c); box.appendChild(r);
+  }
+}
+$('#btn-add-course').onclick = async () => {
+  const name = await askText('コース名'); if (!name) return;
+  const c = { id: uid(), name, created: Date.now() }; await DB.put('courses', c); openCourse(c);
+};
+
+/* ---------- コース ---------- */
+const urls = [];
+async function getHoles(cid) { return (await DB.byCourse('holes', cid)).sort((a, b) => a.order - b.order); }
+async function openCourse(c) {
+  course = c; $('#course-title').textContent = c.name;
+  urls.splice(0).forEach(URL.revokeObjectURL);
+  const holes = await getHoles(c.id), box = $('#hole-list');
+  box.innerHTML = holes.length ? '' : '<p class="empty">1番ホールから順に登録してください。登録した順番がホールの順番になります。</p>';
+  holes.forEach((h, i) => {
+    const u = URL.createObjectURL(h.image); urls.push(u);
+    const r = document.createElement('div'); r.className = 'row';
+    r.innerHTML = `<img src="${u}" alt=""><div class="grow"><div>${i + 1}番</div><small>Par ${h.par}　タップで単ホール練習</small></div><button class="danger">削除</button>`;
+    r.onclick = () => startPlay('practice', [h]);
+    r.querySelector('button').onclick = async e => {
+      e.stopPropagation();
+      if (await confirmDel(`${i + 1}番を削除しますか？`, '登録し直すと、このホールは最後の番号になります。')) { await DB.del('holes', h.id); openCourse(c); }
+    };
+    box.appendChild(r);
+  });
+  $('#btn-start-round').disabled = !holes.length;
+  const open = (await DB.byCourse('rounds', c.id)).find(r => r.mode === 'round' && !r.finished);
+  $('#btn-resume').classList.toggle('hidden', !open);
+  $('#btn-resume').onclick = () => resumeRound(open);
+  show('course');
+}
+$('#btn-start-round').onclick = async () => {
+  const open = (await DB.byCourse('rounds', course.id)).find(r => r.mode === 'round' && !r.finished);
+  if (open && !await msg('中断したラウンドがあります', '新しく始めると、中断したラウンドは未完了のまま記録に残ります。', [['キャンセル', false], ['新しく始める', true, 'primary']])) return;
+  if (open) { open.finished = true; open.aborted = true; await DB.put('rounds', open); }
+  startPlay('round', await getHoles(course.id));
+};
+$('#btn-del-course').onclick = async () => {
+  if (!await confirmDel(`「${course.name}」を削除しますか？`, '登録したホールもすべて削除されます。記録は残ります。')) return;
+  for (const h of await DB.byCourse('holes', course.id)) await DB.del('holes', h.id);
+  await DB.del('courses', course.id); renderHome(); show('home');
+};
+
+/* ---------- ホール登録 ---------- */
+const edMap = new MapView($('#ed-canvas'));
+let ed = null;
+const ED_STEPS = [
+  { k: 'pick', t: 'ホールの画像（航空写真のスクリーンショットなど）を選んでください。' },
+  { k: 'scaleA', t: '縮尺を合わせます。距離が分かる2点のうち<b>1点目</b>をスティックで合わせてください（縮尺バーの端など）。' },
+  { k: 'scaleB', t: '<b>2点目</b>を合わせてください。' },
+  { k: 'yd', t: '2点の間の<b>距離（ヤード）</b>を入力してください。' },
+  { k: 'tee', t: '<b>ティー位置</b>を合わせてください。' },
+  { k: 'green', t: '<b>グリーン中心</b>を合わせてください。' },
+  { k: 'par', t: '<b>パー</b>を選んでください。' },
+];
+edMap.overlay = (x, mv) => {
+  if (!ed || !ed.img) return;
+  const P = ed.pts;
+  if (P.scaleA && P.scaleB) { const a = mv.toScr(P.scaleA), b = mv.toScr(P.scaleB); line(x, a, b, '#7fd4e8', 2); if (ed.yd) label(x, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, ed.yd + 'y'); }
+  for (const k of ['scaleA', 'scaleB']) if (P[k]) { const q = mv.toScr(P[k]); x.fillStyle = '#7fd4e8'; x.beginPath(); x.arc(q.x, q.y, 5, 0, Math.PI * 2); x.fill(); }
+  if (P.tee) drawTee(x, mv.toScr(P.tee));
+  if (P.green) drawFlag(x, mv.toScr(P.green));
+  const st = ED_STEPS[ed.step].k;
+  if (['scaleA', 'scaleB', 'tee', 'green'].includes(st)) {
+    const q = mv.toScr(ed.cur);
+    x.strokeStyle = '#ff3b30'; x.lineWidth = 2; x.beginPath(); x.arc(q.x, q.y, 12, 0, Math.PI * 2);
+    x.moveTo(q.x - 20, q.y); x.lineTo(q.x - 4, q.y); x.moveTo(q.x + 4, q.y); x.lineTo(q.x + 20, q.y);
+    x.moveTo(q.x, q.y - 20); x.lineTo(q.x, q.y - 4); x.moveTo(q.x, q.y + 4); x.lineTo(q.x, q.y + 20); x.stroke();
+    mv.loupe(ed.cur);
+  }
+};
+new Stick($('#ed-stick'), (nx, ny, dt) => ed && movePoint(edMap, ed.cur)(nx, ny, dt));
+$('#btn-add-hole').onclick = () => {
+  ed = { step: 0, pts: {}, img: null }; edMap.img = null; $('#ed-title').textContent = 'ホールを登録';
+  show('edit'); edStep(0); edMap.draw();
+};
+$('#ed-cancel').onclick = () => openCourse(course);
+$('#ed-pick-btn').onclick = () => $('#ed-file').click();
+$('#ed-file').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const bmp = await createImageBitmap(f), m = 4096, k = Math.min(1, m / Math.max(bmp.width, bmp.height));
+  const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+  cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+  ed.blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.9));
+  ed.img = await createImageBitmap(ed.blob); edMap.setImage(ed.img); edStep(1);
+};
+function edStep(i) {
+  ed.step = i; const st = ED_STEPS[i];
+  $('#ed-inst').innerHTML = st.t;
+  $('#ed-pick').classList.toggle('hidden', st.k !== 'pick');
+  $('#ed-point').classList.toggle('hidden', !['scaleA', 'scaleB', 'tee', 'green'].includes(st.k));
+  $('#ed-dist').classList.toggle('hidden', st.k !== 'yd');
+  $('#ed-par').classList.toggle('hidden', st.k !== 'par');
+  if (ed.pts[st.k]) ed.cur = { ...ed.pts[st.k] }; else if (ed.img) ed.cur = edMap.centerImg();
+  if (st.k === 'yd') { $('#ed-yd').value = ed.yd || ''; setTimeout(() => $('#ed-yd').focus(), 50); }
+  edMap.draw();
+}
+$('#ed-ok').onclick = () => {
+  const k = ED_STEPS[ed.step].k;
+  if (k === 'scaleB' && dist(ed.cur, ed.pts.scaleA) < 5) return msg('2点が近すぎます', '縮尺の精度を保つため、できるだけ離れた2点を選んでください。', [['OK', 0]]);
+  ed.pts[k] = { ...ed.cur }; navigator.vibrate?.(10); edStep(ed.step + 1);
+};
+const edBack = () => { const k = ED_STEPS[ed.step - 1].k; if (k === 'pick') { $('#ed-file').click(); return; } delete ed.pts[k]; edStep(ed.step - 1); };
+$('#ed-back').onclick = edBack; $('#ed-back2').onclick = edBack; $('#ed-back3').onclick = edBack;
+$('#ed-yd-ok').onclick = () => {
+  const v = parseFloat($('#ed-yd').value); if (!(v > 0)) return;
+  ed.yd = v; $('#ed-yd').blur(); edStep(ed.step + 1);
+};
+[3, 4, 5, 6].forEach(p => {
+  const b = document.createElement('button'); b.textContent = p;
+  b.onclick = async () => {
+    const holes = await getHoles(course.id);
+    await DB.put('holes', {
+      id: uid(), courseId: course.id, order: holes.length ? holes[holes.length - 1].order + 1 : 0,
+      image: ed.blob, w: ed.img.width, h: ed.img.height, par: p,
+      scaleA: ed.pts.scaleA, scaleB: ed.pts.scaleB, scaleYd: ed.yd, tee: ed.pts.tee, green: ed.pts.green,
+    });
+    openCourse(course);
+  };
+  $('#ed-par-btns').appendChild(b);
+});
+
+/* ---------- プレー ---------- */
+const plMap = new MapView($('#pl-canvas'));
+let pl = null; // {round, i, hole, img, k, shots, aim, inp, relief}
+const curHoleRes = () => pl.round.results[pl.i];
+function ballPos() {
+  let p = pl.hole.tee;
+  for (const s of pl.shots) p = s.ob ? s.from : s.pen ? (s.relief || s.to) : s.to;
+  return p;
+}
+const strokes = () => pl.shots.reduce((n, s) => n + 1 + (s.ob || s.pen ? 1 : 0), 0);
+function preview() {
+  const D = parseFloat(pl.inp.dist), L = parseFloat(pl.inp.lat || '0');
+  if (!(D > 0)) return null;
+  if (L > 0 && !pl.inp.side) return null;
+  return landing(ballPos(), pl.aim, D, pl.inp.side === 'L' ? -L : L, pl.k);
+}
+plMap.overlay = (x, mv) => {
+  if (!pl) return;
+  const h = pl.hole, p = ballPos(), q = mv.toScr(p);
+  drawTee(x, mv.toScr(h.tee)); drawShots(x, mv, pl.shots); drawFlag(x, mv.toScr(h.green));
+  if (pl.relief) { const r = mv.toScr(pl.relief); drawBall(x, r); mv.loupe(pl.relief); return; }
+  // 狙い線（50ヤードごとの目盛り付き）
+  const len = 700 / pl.k, end = { x: p.x + len * Math.sin(pl.aim), y: p.y - len * Math.cos(pl.aim) };
+  line(x, q, mv.toScr(end), 'rgba(30,38,33,.6)', 4); line(x, q, mv.toScr(end), '#7fd4e8', 2);
+  x.font = '600 11px system-ui'; x.fillStyle = '#7fd4e8';
+  for (let y = 50; y <= 700; y += 50) {
+    const t = mv.toScr({ x: p.x + y / pl.k * Math.sin(pl.aim), y: p.y - y / pl.k * Math.cos(pl.aim) });
+    const nx = Math.cos(pl.aim) * 6, ny = Math.sin(pl.aim) * 6;
+    x.strokeStyle = '#7fd4e8'; x.lineWidth = 2; x.beginPath(); x.moveTo(t.x - nx, t.y - ny); x.lineTo(t.x + nx, t.y + ny); x.stroke();
+    if (y % 100 === 0) x.fillText(y, t.x + nx + 3, t.y + ny + 4);
+  }
+  drawBall(x, q);
+  const pv = preview();
+  if (pv) { const s = mv.toScr(pv); line(x, q, s, '#f4c542', 1.5, [4, 4]); x.strokeStyle = '#f4c542'; x.lineWidth = 3; x.beginPath(); x.arc(s.x, s.y, 9, 0, Math.PI * 2); x.stroke(); }
+};
+function updPlay() {
+  const r = curHoleRes(), p = ballPos(), pv = preview();
+  $('#pl-title').textContent = pl.round.mode === 'round' ? `${pl.i + 1}番　Par ${pl.hole.par}` : `練習　Par ${pl.hole.par}`;
+  $('#pl-strokes').textContent = `${strokes()}打`;
+  $('#pl-remain').textContent = `グリーン中心まで ${fmtYd(dist(p, pl.hole.green) * pl.k)}`;
+  $('#pl-prev').textContent = pv ? `着弾後 残り ${fmtYd(dist(pv, pl.hole.green) * pl.k)}` : '';
+  $('#pl-prev').classList.toggle('hidden', !pv);
+  $('#v-dist').textContent = pl.inp.dist ? pl.inp.dist + 'y' : '–';
+  $('#v-lat').textContent = pl.inp.lat ? `${pl.inp.side || '?'} ${pl.inp.lat}y` : (pl.inp.field === 'lat' ? '0y' : '–');
+  $('#f-dist').classList.toggle('act', pl.inp.field === 'dist');
+  $('#f-lat').classList.toggle('act', pl.inp.field === 'lat');
+  $('#k-L').classList.toggle('sel', pl.inp.side === 'L'); $('#k-R').classList.toggle('sel', pl.inp.side === 'R');
+  const off = (pl.aim - angleTo(p, pl.hole.green)) * 180 / Math.PI, o = ((off + 540) % 360) - 180;
+  $('#pl-aim').textContent = Math.abs(o) < 0.05 ? '狙い：グリーン方向' : `狙い：グリーンから${o > 0 ? '右' : '左'}${Math.abs(o).toFixed(1)}°`;
+  $('#t-ok').disabled = !pv;
+  const last = pl.shots[pl.shots.length - 1], flagged = last && (last.ob || last.pen);
+  $('#t-ob').disabled = $('#t-pen').disabled = !last || flagged;
+  $('#t-undo').disabled = !last;
+  const rel = !!pl.relief;
+  $('#pl-shot').classList.toggle('hidden', rel); $('#pl-relief').classList.toggle('hidden', !rel);
+  plMap.draw();
+}
+const resetInput = () => { pl.inp = { dist: '', lat: '', side: null, field: 'dist' }; };
+const aimGreen = () => { pl.aim = angleTo(ballPos(), pl.hole.green); };
+async function saveRound() { curHoleRes().shots = pl.shots; if (pl.round.mode === 'round') await DB.put('rounds', pl.round); }
+async function startPlay(mode, holes) {
+  const round = {
+    id: uid(), courseId: course.id, courseName: course.name, mode, date: Date.now(), finished: false,
+    results: holes.map((h, i) => ({ holeId: h.id, no: mode === 'round' ? i + 1 : null, par: h.par, shots: [], putts: null, done: false })),
+  };
+  if (mode === 'practice') round.results[0].no = (await getHoles(course.id)).findIndex(x => x.id === holes[0].id) + 1;
+  await loadHole(round, 0);
+}
+async function resumeRound(round) { await loadHole(round, round.results.findIndex(r => !r.done)); }
+async function loadHole(round, i) {
+  const res = round.results[i], hole = await DB.get('holes', res.holeId);
+  if (!hole) { // ラウンド中にホールが削除された場合は飛ばす
+    res.done = true; res.skipped = true;
+    return i + 1 < round.results.length ? loadHole(round, i + 1) : finishRound(round);
+  }
+  pl = { round, i, hole, k: ypp(hole), shots: res.shots || [], relief: null };
+  resetInput(); aimGreen(); show('play');
+  plMap.setImage(await createImageBitmap(hole.image)); updPlay();
+}
+// テンキー
+['7', '8', '9', '4', '5', '6', '1', '2', '3', '.', '0', '⌫'].forEach(k => {
+  const b = document.createElement('button'); b.textContent = k; b.className = 'num';
+  b.onclick = () => {
+    const f = pl.inp.field; let v = pl.inp[f];
+    if (k === '⌫') { if (v) v = v.slice(0, -1); else if (f === 'lat') { pl.inp.field = 'dist'; pl.inp.side = null; updPlay(); return; } }
+    else if (k === '.') { if (!v.includes('.')) v = (v || '0') + '.'; }
+    else if (v.replace('.', '').length < 5 && !(v.includes('.') && v.split('.')[1].length >= 1)) v = (v === '0' ? '' : v) + k;
+    pl.inp[f] = v; updPlay();
+  };
+  $('#keys').appendChild(b);
+});
+$('#f-dist').onclick = () => { pl.inp.field = 'dist'; updPlay(); };
+$('#f-lat').onclick = () => { pl.inp.field = 'lat'; updPlay(); };
+const setSide = s => { pl.inp.side = pl.inp.side === s ? null : s; if (pl.inp.field === 'dist' && pl.inp.dist) pl.inp.field = 'lat'; updPlay(); };
+$('#k-L').onclick = () => setSide('L'); $('#k-R').onclick = () => setSide('R');
+// 飛距離を入れてL/Rを押すと左右欄へ移る（欄のタップでも切り替え可）
+new Stick($('#pl-stick'), (nx, ny, dt) => { if (!pl) return; pl.aim += nx * (40 * Math.PI / 180) * dt; updPlay(); }, true); // 最大40°/秒
+new Stick($('#rl-stick'), (nx, ny, dt) => { if (pl?.relief) { movePoint(plMap, pl.relief)(nx, ny, dt); } });
+$('#t-ok').onclick = async () => {
+  const to = preview(); if (!to) return;
+  pl.shots.push({ from: { ...ballPos() }, aim: pl.aim, dist: parseFloat(pl.inp.dist), lat: parseFloat(pl.inp.lat || '0') * (pl.inp.side === 'L' ? -1 : 1), to });
+  navigator.vibrate?.(15); resetInput(); aimGreen(); plMap.ensureVisible(ballPos()); updPlay(); await saveRound();
+};
+$('#t-undo').onclick = async () => {
+  const s = pl.shots[pl.shots.length - 1]; if (!s) return;
+  if (s.ob || s.pen) { delete s.ob; delete s.pen; delete s.relief; } else pl.shots.pop();
+  resetInput(); aimGreen(); updPlay(); await saveRound();
+};
+$('#t-ob').onclick = async () => {
+  pl.shots[pl.shots.length - 1].ob = true; resetInput(); aimGreen(); plMap.ensureVisible(ballPos()); updPlay(); await saveRound();
+};
+$('#t-pen').onclick = () => { const s = pl.shots[pl.shots.length - 1]; pl.relief = { ...s.to }; plMap.ensureVisible(pl.relief); updPlay(); };
+$('#rl-cancel').onclick = () => { pl.relief = null; updPlay(); };
+$('#rl-ok').onclick = async () => {
+  const s = pl.shots[pl.shots.length - 1]; s.pen = true; s.relief = { ...pl.relief }; pl.relief = null;
+  resetInput(); aimGreen(); updPlay(); await saveRound();
+};
+[1, 2, 3, 4].forEach(n => {
+  const b = document.createElement('button'); b.textContent = n; b.className = 'num';
+  b.onclick = async () => {
+    $('#dlg-putt').close();
+    const r = curHoleRes(); r.shots = pl.shots; r.putts = n; r.done = true;
+    if (pl.i + 1 < pl.round.results.length) { await DB.put('rounds', pl.round); loadHole(pl.round, pl.i + 1); }
+    else finishRound(pl.round);
+  };
+  $('#putt-btns').appendChild(b);
+});
+$('#t-on').onclick = () => $('#dlg-putt').showModal();
+$('#putt-cancel').onclick = () => $('#dlg-putt').close();
+$('#pl-quit').onclick = async () => {
+  if (pl.round.mode === 'round') {
+    if (await msg('ラウンドを中断しますか？', 'コース画面の「中断したラウンドを再開」から続きをプレーできます。', [['続ける', false], ['中断する', true, 'primary']])) { await saveRound(); openCourse(course); }
+  } else if (await msg('練習をやめますか？', 'グリーンオンまで終えていない練習は記録されません。', [['続ける', false], ['やめる', true, 'primary']])) openCourse(course);
+};
+async function finishRound(round) { round.finished = true; await DB.put('rounds', round); pl = null; openCard(round, 'course'); }
+
+/* ---------- 記録・スコアカード・軌跡 ---------- */
+const holeStrokes = r => r.shots.reduce((n, s) => n + 1 + (s.ob || s.pen ? 1 : 0), 0) + (r.putts || 0);
+function totals(round) {
+  const d = round.results.filter(r => r.done && !r.skipped);
+  return { n: d.length, score: d.reduce((a, r) => a + holeStrokes(r), 0), par: d.reduce((a, r) => a + r.par, 0) };
+}
+const diff = v => v === 0 ? 'E' : (v > 0 ? '+' + v : '' + v);
+const fmtDate = t => { const d = new Date(t); return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; };
+$('#btn-history').onclick = async () => {
+  const list = (await DB.all('rounds')).sort((a, b) => b.date - a.date), box = $('#round-list');
+  box.innerHTML = list.length ? '' : '<p class="empty">まだ記録がありません。ラウンドや単ホール練習を終えると、ここに表示されます。</p>';
+  for (const r of list) {
+    const t = totals(r), el = document.createElement('div'); el.className = 'row';
+    const state = !r.finished ? '（中断中）' : r.aborted ? '（未完了）' : '';
+    el.innerHTML = `<div class="grow"><div></div><small class="num">${fmtDate(r.date)}　${r.mode === 'round' ? 'ラウンド' : r.results[0].no + '番 練習'}${state}</small></div><div class="num">${t.n ? `${t.score}（${diff(t.score - t.par)}）` : '–'}</div>`;
+    el.querySelector('.grow div').textContent = r.courseName; el.onclick = () => openCard(r, 'history'); box.appendChild(el);
+  }
+  show('history');
+};
+let cardRound = null, cardBack = 'history';
+function openCard(round, back) {
+  cardRound = round; cardBack = back;
+  $('#card-title').textContent = `${round.courseName}　${fmtDate(round.date)}`;
+  let html = '<tr><th>ホール</th><th>パー</th><th>ショット</th><th>罰打</th><th>パット</th><th>スコア</th></tr>';
+  round.results.forEach((r, i) => {
+    if (!r.done || r.skipped) { html += `<tr><td>${r.no}</td><td>${r.par}</td><td colspan="4" style="color:var(--dim)">${r.skipped ? 'ホール削除のため未プレー' : '未プレー'}</td></tr>`; return; }
+    const pen = r.shots.filter(s => s.ob || s.pen).length, sc = holeStrokes(r), d = sc - r.par;
+    html += `<tr class="tap" data-i="${i}"><td>${r.no}</td><td>${r.par}</td><td>${r.shots.length}</td><td>${pen || ''}</td><td>${r.putts}</td><td class="${d > 0 ? 'over' : d < 0 ? 'under' : ''}">${sc}</td></tr>`;
+  });
+  const t = totals(round);
+  html += `<tr><th>合計</th><th>${t.par}</th><th></th><th></th><th></th><th>${t.score}（${diff(t.score - t.par)}）</th></tr>`;
+  $('#card-table').innerHTML = html;
+  $('#card-table').querySelectorAll('tr.tap').forEach(tr => tr.onclick = () => openTrace(round.results[+tr.dataset.i]));
+  show('card');
+}
+$('#card-back').onclick = () => cardBack === 'course' ? openCourse(course) : $('#btn-history').onclick();
+$('#card-del').onclick = async () => {
+  if (!await confirmDel('この記録を削除しますか？', '')) return;
+  await DB.del('rounds', cardRound.id); $('#btn-history').onclick();
+};
+const trMap = new MapView($('#tr-canvas'));
+let trace = null;
+trMap.overlay = (x, mv) => {
+  if (!trace) return;
+  drawTee(x, mv.toScr(trace.hole.tee)); drawShots(x, mv, trace.res.shots); drawFlag(x, mv.toScr(trace.hole.green));
+  const s = trace.res.shots, last = s[s.length - 1];
+  if (last && !last.ob && !last.pen) drawBall(x, mv.toScr(last.to), 5);
+};
+async function openTrace(res) {
+  const hole = await DB.get('holes', res.holeId);
+  if (!hole) return msg('ホールが削除されています', '軌跡を表示するには、そのホールの画像が必要です。', [['OK', 0]]);
+  trace = { hole, res }; $('#trace-title').textContent = `${res.no}番　${holeStrokes(res)}打（Par ${res.par}）`;
+  show('trace'); trMap.setImage(await createImageBitmap(hole.image));
+}
+
+/* ---------- 起動 ---------- */
+(async () => {
+  await DB.open();
+  navigator.storage?.persist?.(); // ブラウザによる自動削除を起きにくくする
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  renderHome();
+})();
+</script>
+</body>
+</html>
