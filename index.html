@@ -275,9 +275,11 @@ class MapView {
   }
   toScr(p) { return { x: p.x * this.s + this.ox, y: p.y * this.s + this.oy }; }
   centerImg() { return { x: (this.w / 2 - this.ox) / this.s, y: (this.h / 2 - this.oy) / this.s }; }
-  ensureVisible(p, m = 30) {
+  // はみ出した方向だけ、画面内に入る最小量だけずらす
+  ensureVisible(p, m = 50) {
     const q = this.toScr(p);
-    if (q.x < m || q.x > this.w - m || q.y < m || q.y > this.h - m) { this.ox += this.w / 2 - q.x; this.oy += this.h / 2 - q.y; }
+    if (q.x < m) this.ox += m - q.x; else if (q.x > this.w - m) this.ox -= q.x - (this.w - m);
+    if (q.y < m) this.oy += m - q.y; else if (q.y > this.h - m) this.oy -= q.y - (this.h - m);
     this.draw();
   }
   down(e) {
