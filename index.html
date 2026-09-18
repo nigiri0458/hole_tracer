@@ -308,18 +308,6 @@ class MapView {
     if (this.img) { x.imageSmoothingEnabled = true; x.drawImage(this.img, this.ox, this.oy, this.img.width * this.s, this.img.height * this.s); }
     if (this.overlay) this.overlay(x, this);
   }
-  // 点の周りを拡大表示するルーペ
-  loupe(p) {
-    const x = this.ctx, R = 64, mag = Math.max(this.s * 4, 1.5), q = this.toScr(p);
-    const cx = q.x < this.w / 2 ? this.w - R - 10 : R + 10, cy = R + 10;
-    x.save(); x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.clip();
-    x.fillStyle = '#555c57'; x.fillRect(cx - R, cy - R, R * 2, R * 2);
-    x.drawImage(this.img, cx - p.x * mag, cy - p.y * mag, this.img.width * mag, this.img.height * mag);
-    x.strokeStyle = '#ff3b30'; x.lineWidth = 1.5; x.beginPath();
-    x.moveTo(cx - R, cy); x.lineTo(cx - 5, cy); x.moveTo(cx + 5, cy); x.lineTo(cx + R, cy);
-    x.moveTo(cx, cy - R); x.lineTo(cx, cy - 5); x.moveTo(cx, cy + 5); x.lineTo(cx, cy + R); x.stroke();
-    x.restore(); x.strokeStyle = '#e8ece4'; x.lineWidth = 2; x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.stroke();
-  }
 }
 
 /* ---------- スティック（傾けた量に応じて速度が変わる） ---------- */
@@ -456,7 +444,6 @@ edMap.overlay = (x, mv) => {
     x.strokeStyle = '#ff3b30'; x.lineWidth = 2; x.beginPath(); x.arc(q.x, q.y, 12, 0, Math.PI * 2);
     x.moveTo(q.x - 20, q.y); x.lineTo(q.x - 4, q.y); x.moveTo(q.x + 4, q.y); x.lineTo(q.x + 20, q.y);
     x.moveTo(q.x, q.y - 20); x.lineTo(q.x, q.y - 4); x.moveTo(q.x, q.y + 4); x.lineTo(q.x, q.y + 20); x.stroke();
-    mv.loupe(ed.cur);
   }
 };
 new Stick($('#ed-stick'), (nx, ny, dt) => ed && movePoint(edMap, ed.cur)(nx, ny, dt));
@@ -530,7 +517,7 @@ plMap.overlay = (x, mv) => {
   if (!pl) return;
   const h = pl.hole, p = ballPos(), q = mv.toScr(p);
   drawTee(x, mv.toScr(h.tee)); drawShots(x, mv, pl.shots); drawFlag(x, mv.toScr(h.green));
-  if (pl.relief) { const r = mv.toScr(pl.relief); drawBall(x, r); mv.loupe(pl.relief); return; }
+  if (pl.relief) { const r = mv.toScr(pl.relief); drawBall(x, r); return; }
   // 狙い線（50ヤードごとの目盛り付き）
   const len = 700 / pl.k, end = { x: p.x + len * Math.sin(pl.aim), y: p.y - len * Math.cos(pl.aim) };
   line(x, q, mv.toScr(end), 'rgba(30,38,33,.6)', 4); line(x, q, mv.toScr(end), '#7fd4e8', 2);
